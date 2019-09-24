@@ -11,7 +11,7 @@
  ********************************************************************
 
   function:
-    last mod: $Id: decinfo.c 16503 2009-08-22 18:14:02Z giles $
+    last mod: $Id$
 
  ********************************************************************/
 
@@ -128,6 +128,10 @@ static int oc_comment_unpack(oc_pack_buf *_opb,th_comment *_tc){
    _tc->comments*sizeof(_tc->comment_lengths[0]));
   _tc->user_comments=(char **)_ogg_malloc(
    _tc->comments*sizeof(_tc->user_comments[0]));
+  if(_tc->comment_lengths==NULL||_tc->user_comments==NULL){
+    _tc->comments=0;
+    return TH_EFAULT;
+  }
   for(i=0;i<_tc->comments;i++){
     len=oc_unpack_length(_opb);
     if(len<0||len>oc_pack_bytes_left(_opb)){
@@ -168,9 +172,23 @@ static int oc_dec_headerin(oc_pack_buf *_opb,th_info *_info,
   int  ret;
   val=oc_pack_read(_opb,8);
   packtype=(int)val;
-  /*If we're at a data packet and we have received all three headers, we're
-     done.*/
-  if(!(packtype&0x80)&&_info->frame_width>0&&_tc->vendor!=NULL&&*_setup!=NULL){
+  /*If we're at a data packet...*/
+  if(!(packtype&0x80)){
+    /*Check to make sure we received all three headers...
+      If we haven't seen any valid headers, assume this is not actually
+       Theora.*/
+    if(_info->frame_width<=0)return TH_ENOTFORMAT;
+    /*Follow our documentation, which says we'll return TH_EFAULT if this
+       are NULL (_info was checked by our caller).*/
+    if(_tc==NULL)return TH_EFAULT;
+    /*And if any other headers were missing, declare this packet "out of
+       sequence" instead.*/
+    if(_tc->vendor==NULL)return TH_EBADHEADER;
+    /*Don't check this until it's needed, since we allow passing NULL for the
+       arguments that we're not expecting the next header to fill in yet.*/
+    if(_setup==NULL)return TH_EFAULT;
+    if(*_setup==NULL)return TH_EBADHEADER;
+    /*If we got everything, we're done.*/
     return 0;
   }
   /*Check the codec string.*/
